@@ -1,19 +1,28 @@
-FROM python:3.11-slim
+FROM python:3.14-slim AS builder
 
-RUN useradd -m myuser
-USER myuser
+WORKDIR /build
+COPY requirements.txt .
 
-ENV PATH="/home/myuser/.local/bin:${PATH}"
+ENV PIP_NO_CACHE_DIR=1
+
+RUN pip install --upgrade pip && \
+    pip install --prefix=/install -r requirements.txt
+
+
+FROM python:3.14-slim
+
 ENV PYTHONUNBUFFERED=1
+ENV PYTHONDONTWRITEBYTECODE=1
+
+RUN useradd -m -u 1000 myuser
 
 WORKDIR /home/myuser/app
 
-COPY --chown=myuser:myuser requirements.txt .
-
-RUN pip install --no-cache-dir --user -r requirements.txt
-
+COPY --from=builder /install /usr/local
 COPY --chown=myuser:myuser . .
+
+USER myuser
 
 EXPOSE 8000
 
-CMD ["python", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
