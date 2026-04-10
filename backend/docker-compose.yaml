@@ -70,7 +70,7 @@ services:
       dockerfile: Dockerfile
     container_name: frontend_app
     ports:
-      - "5173:5173"
+      - "80:80"
     depends_on:
       - car-service
       - rental-service
