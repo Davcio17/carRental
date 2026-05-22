@@ -8,6 +8,7 @@
 5. [Rekomendacje dotyczące analizy podatności](#rekomendacje-dotyczące-analizy-podatności)
 6. [Wytyczne Docker Scout / Trivy](#wytyczne-docker-scout--trivy)
 7. [Opis manifestow K8S](#opis-manifestow-k8s)
+8. [Dokumentacja Zaawansowanych Mechanizmów Kubernetes](#dokumentacja-zaawansowanych-mechanizmów-kubernetes)
 
 ---
 
@@ -58,10 +59,12 @@ volumes:
 
 ## Opis manifestow K8S
 **1. Przestrzeń nazw (Namespace)**
+
 Cały system jest wdrażany w dedykowanej przestrzeni nazw o nazwie car-rental-ns.
 Użycie dedykowanego namespace'a pozwala na logiczne odseparowanie zasobów projektu od innych aplikacji działających w klastrze, ułatwia zarządzanie uprawnieniami (RBAC) oraz ułatwia sprzątanie środowiska.
 
 **2. Obiekty wdrażania (Deployment / StatefulSet)**
+
 System wykorzystuje dwa główne typy obiektów do zarządzania pracą kontenerów, dobrane odpowiednio do charakteru poszczególnych mikrousług:
 Deployment (Aplikacje bezstanowe)
 Mikroserwisy frontend, car-service oraz rental-service są aplikacjami bezstanowymi (stateless), dlatego użyto dla nich obiektu typu Deployment.
@@ -72,10 +75,12 @@ Dla bazy danych MongoDB wybrano obiekt typu StatefulSet z liczbą replik ustawio
 Wybór ten jest podyktowany faktem, że baza danych jest aplikacją stanową. StatefulSet gwarantuje stabilny identyfikator sieciowy oraz bezpieczne podpinanie wolumenów z danymi, co jest kluczowe dla zachowania spójności bazy w przypadku restartu poda.
 
 **3. Usługi sieciowe (Services)**
+
 Wszystkie usługi w klastrze (car-service-service, rental-service-service, frontend-service, mongodb-service) zostały skonfigurowane jako typ ClusterIP.
 Typ ClusterIP wystawia usługę na wewnętrznym adresie IP klastra, co oznacza, że serwisy te są dostępne tylko z poziomu innych aplikacji wewnątrz klastra (np. car-service i rental-service komunikujące się z mongodb-service na porcie 27017). Jest to optymalne z punktu widzenia bezpieczeństwa - nie wystawiamy bezpośrednio portów poszczególnych mikrousług na zewnątrz klastra. Dostęp zewnętrzny realizowany jest centralnie za pomocą Ingressa.
 
 **4. Dostęp z zewnątrz (Ingress)**
+
 Do obsługi ruchu z zewnątrz klastra wybrano rozwiązanie Ingress wykorzystujące klasę nginx (ingressClassName: nginx).
 Ruch kierowany jest na host car-rental.local.
 Uzasadnienie i konfiguracja: Wybór Ingressa zamiast wielu usług typu LoadBalancer pozwala na oszczędność zasobów i ujednolicenie punktu wejścia do aplikacji. Ingress realizuje routing oparty na ścieżkach:
@@ -85,11 +90,102 @@ Pozostały ruch (ścieżka /(.*)) obsługiwany jest przez frontend-service na po
 Użyto adnotacji nginx.ingress.kubernetes.io/rewrite-target: /$1, która ułatwia dynamiczne przepisywanie ścieżek URL trafiających do backendowych mikrousług.
 
 **5. Przechowywanie danych (PV / PVC / StorageClass)**
+
 Mechanizm trwałego przechowywania danych został zrealizowany dla bazy danych MongoDB przy użyciu PersistentVolumeClaim (PVC) o nazwie mongodb-pvc.
 Zgłoszenie PVC żąda 2Gi przestrzeni dyskowej z domyślnej klasy pamięci standard z prawami dostępu ReadWriteOnce.
 Utworzony wolumen (pod nazwą mongo-storage) jest następnie montowany wewnątrz kontenera MongoDB w ścieżce /data/db. Dzięki temu dane zapisane w bazie przetrwają cykl życia pojedynczego poda.
 
 **6. Wstrzykiwanie konfiguracji (ConfigMap / Secrets)**
+
 Konfiguracja aplikacji jest odseparowana od obrazów kontenerów, co ułatwia migrację między środowiskami. Wdrożenie wykorzystuje zarówno ConfigMap, jak i Secret.
 ConfigMap (rental-config): Przechowuje jawne parametry konfiguracyjne, takie jak adres połączenia do bazy danych: MONGO_URL: "mongodb://mongodb-service:27017". Wartość ta jest wstrzykiwana jako zmienna środowiskowa MONGO_URL do kontenerów car-service oraz rental-service z użyciem valueFrom.configMapKeyRef.
 Secret (rental-secret): Przechowuje wrażliwe dane, w tym przypadku klucz aplikacji APP_SECRET_KEY, który został zakodowany w formacie Base64. Użycie typu Opaque gwarantuje, że dane wrażliwe nie są przechowywane otwartym tekstem bezpośrednio w repozytorium czy zmiennych bezstanowych.
+
+
+## Dokumentacja Zaawansowanych Mechanizmów Kubernetes
+
+W projekcie aplikacji wynajmu samochodów (`car-rental`) zaimplementowano zaawansowane mechanizmy kontroli, bezpieczeństwa oraz planowania zasobów klastra Kubernetes. Poniższy opis szczegółowo wyjaśnia realizację wymagań projektowych w oparciu o dostarczone pliki konfiguracyjne YAML.
+
+---
+
+## a) Ograniczenie wykorzystywanych zasobów (Resource Management)
+
+Wszystkie kluczowe komponenty systemu (zarówno aplikacje bezstanowe, jak i baza danych) posiadają zdefiniowane limity (`limits`) oraz żądania (`requests`) dla zasobów procesora (`cpu`) oraz pamięci operacyjnej (`memory`). 
+
+Zapobiega to zjawisku "hałaśliwych sąsiadów" (ang. *noisy neighbors*), gwarantuje stabilność węzłów klastra i pozwala schedulerowi Kubernetesa na optymalne rozmieszczenie podów.
+
+### Przykład implementacji (na podstawie `car-service.yaml`):
+
+```yaml
+resources:
+  requests:
+    cpu: "100m"      
+    memory: 128Mi    
+  limits:
+    cpu: "500m"      
+    memory: 512Mi    
+```
+
+### Zestawienie limitów zasobów w projekcie
+
+| Komponent (`Deployment` / `StatefulSet`) | Żądania (Requests) CPU / RAM | Limity (Limits) CPU / RAM |
+| :--- | :--- | :--- |
+| **car-service** | 100m / 128Mi | 500m / 512Mi |
+| **rental-service** | 100m / 128Mi | 500m / 512Mi |
+| **frontend** | 100m / 64Mi | 500m / 256Mi |
+| **mongodb** | 250m / 256Mi | 500m / 512Mi |
+
+
+b) Zdefiniowanie polityki sieciowej (Network Policy)
+W celu realizacji założeń architektury Zero Trust oraz odizolowania warstwy danych, w pliku network-policy.yaml zaimplementowano obiekt typu NetworkPolicy o nazwie db-policy.
+Domyślnie w Kubernetesie pody mogą komunikować się ze sobą bez żadnych ograniczeń. Wprowadzona polityka restrykcyjnie ogranicza ruch sieciowy trafiający do bazy danych MongoDB wyłącznie do zaufanych komponentów systemu.
+```yaml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: db-policy
+  namespace: car-rental-ns
+spec:
+  podSelector:
+    matchLabels:
+      app: mongodb 
+  policyTypes:
+    - Ingress   
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: car-service    
+        - podSelector:
+            matchLabels:
+              app: rental-service 
+      ports:
+        - protocol: TCP
+          port: 27017
+```         
+Skutek działania:
+Ruch sieciowy z podów aplikacji frontend bezpośrednio do mongodb jest całkowicie blokowany.
+Ruch z jakichkolwiek innych (przypadkowych lub potencjalnie zainfekowanych) podów w przestrzeni nazw car-rental-ns do bazy danych jest zablokowany.
+c) Mechanizmy sterujące planowaniem rozmieszczenia obiektów (Pod Anti-Affinity) 
+
+Aby zapewnić wysoką dostępność (High Availability) mikroserwisów i odporność na awarie pojedynczych węzłów (Node failure), w pliku car-service.yaml wykorzystano regułę Pod Anti-Affinity (anty-powinowactwo podów).
+Wdrożono wariant preferowany (preferredDuringSchedulingIgnoredDuringExecution), co oznacza, że Kubernetes Scheduler dołoży wszelkich starań, aby nie umieszczać replik tego samego serwisu na tym samym fizycznym/wirtualnym węźle, ale jeśli klaster będzie przeciążony lub będzie posiadał tylko jeden węzeł, pody i tak zostaną uruchomione (tzw. soft anti-affinity).
+
+
+Fragment konfiguracji z car-service.yaml: 
+```yaml
+spec:
+  affinity: 
+    podAntiAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+        - weight: 100
+          podAffinityTerm:
+            topologyKey: "kubernetes.io/hostname" 
+            labelSelector:
+              matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                    - car-service 
+```
+
