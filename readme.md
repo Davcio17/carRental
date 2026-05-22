@@ -7,7 +7,7 @@
 4. [Konfiguracja Docker Compose](#konfiguracja-docker-compose)
 5. [Rekomendacje dotyczące analizy podatności](#rekomendacje-dotyczące-analizy-podatności)
 6. [Wytyczne Docker Scout / Trivy](#wytyczne-docker-scout--trivy)
-7. [Opis manifestów K8S] (#opis-manifestow-k8s)
+7. [Opis manifestow K8S](#opis-manifestow-k8s)
 
 ---
 
