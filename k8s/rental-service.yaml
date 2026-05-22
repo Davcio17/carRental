@@ -15,8 +15,8 @@ spec:
     spec:
       containers:
         - name: rental-service-app
-          image: rental_service_app:latest
-          imagePullPolicy: Never
+          image: vexim/rental-service:latest
+          imagePullPolicy: Always
           ports:
             - containerPort: 8000
           env:

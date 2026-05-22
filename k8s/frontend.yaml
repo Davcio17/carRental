@@ -15,8 +15,8 @@ spec:
     spec:
       containers:
         - name: frontend-app
-          image: frontend_app:latest
-          imagePullPolicy: Never
+          image: kubaaa0105/car-service
+          imagePullPolicy: Always
           ports:
             - containerPort: 80
           resources:
@@ -33,7 +33,7 @@ metadata:
   name: frontend-service
   namespace: car-rental-ns
 spec:
-  type: ClusterIP # Ingress i tak wystawi to na świat, więc wewnątrz klastra wystarczy ClusterIP
+  type: ClusterIP
   ports:
     - port: 80
       targetPort: 80

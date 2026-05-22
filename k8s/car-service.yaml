@@ -13,21 +13,22 @@ spec:
       labels:
         app: car-service
     spec:
-      affinity: # Punkt 2c: Rozmieszczenie obiektów (anty-powinowactwo podów - nie chcemy ich na tym samym węźle, jeśli byłoby ich więcej)
+      affinity: 
         podAntiAffinity:
           preferredDuringSchedulingIgnoredDuringExecution:
             - weight: 100
-              topologyKey: "kubernetes.io/hostname"
-              labelSelector:
-                matchExpressions:
-                  - key: app
-                    operator: In
-                    values:
-                      - car-service
+              podAffinityTerm:
+                topologyKey: "kubernetes.io/hostname"
+                labelSelector:
+                  matchExpressions:
+                    - key: app
+                      operator: In
+                      values:
+                        - car-service
       containers:
         - name: car-service-app
-          image: car_service_app:latest # Zakładamy lokalny obraz w Minikube
-          imagePullPolicy: Never # Ważne dla Minikube, czyta obraz z lokalnego dockera
+          image: vexim/car-service:latest
+          imagePullPolicy: Always 
           ports:
             - containerPort: 8000
           env:
@@ -36,20 +37,19 @@ spec:
                 configMapKeyRef:
                   name: rental-config
                   key: MONGO_URL
-          resources: # Punkt 2a: Ograniczenie zasobów
+          resources:
             limits:
               cpu: "500m"
               memory: 512Mi
             requests:
               cpu: "100m"
               memory: 128Mi
-          healthCheck: # Odpowiednik healthcheck z docker-compose
-            livenessProbe:
-              httpGet:
-                path: /
-                port: 8000
-              initialDelaySeconds: 15
-              periodSeconds: 30
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 8000
+            initialDelaySeconds: 15
+            periodSeconds: 30
 ---
 apiVersion: v1
 kind: Service

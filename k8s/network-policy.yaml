@@ -6,17 +6,17 @@ metadata:
 spec:
   podSelector:
     matchLabels:
-      app: mongodb # Dotyczy bazy danych
+      app: mongodb
   policyTypes:
     - Ingress
   ingress:
     - from:
         - podSelector:
             matchLabels:
-              app: car-service # Zezwalaj z car-service
+              app: car-service
         - podSelector:
             matchLabels:
-              app: rental-service # Zezwalaj z rental-service
+              app: rental-service
       ports:
         - protocol: TCP
           port: 27017
