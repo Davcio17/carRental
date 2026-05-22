@@ -59,7 +59,7 @@ volumes:
 ## Opis manifestow K8S
 **1. Przestrzeń nazw (Namespace)**
 Cały system jest wdrażany w dedykowanej przestrzeni nazw o nazwie car-rental-ns.
-Użycie dedykowanego namespace'a pozwala na logiczne odseparowanie zasobów projektu od innych aplikacji działających w klastrze, ułatwia zarządzanie uprawnieniami (RBAC) oraz ułatwia sprzątanie środowiska (usunięcie namespace'a usuwa wszystkie powiązane zasoby).
+Użycie dedykowanego namespace'a pozwala na logiczne odseparowanie zasobów projektu od innych aplikacji działających w klastrze, ułatwia zarządzanie uprawnieniami (RBAC) oraz ułatwia sprzątanie środowiska.
 
 **2. Obiekty wdrażania (Deployment / StatefulSet)**
 System wykorzystuje dwa główne typy obiektów do zarządzania pracą kontenerów, dobrane odpowiednio do charakteru poszczególnych mikrousług:
@@ -73,23 +73,23 @@ Wybór ten jest podyktowany faktem, że baza danych jest aplikacją stanową. St
 
 **3. Usługi sieciowe (Services)**
 Wszystkie usługi w klastrze (car-service-service, rental-service-service, frontend-service, mongodb-service) zostały skonfigurowane jako typ ClusterIP.
-Uzasadnienie: Typ ClusterIP wystawia usługę na wewnętrznym adresie IP klastra, co oznacza, że serwisy te są dostępne tylko z poziomu innych aplikacji wewnątrz klastra (np. car-service i rental-service komunikujące się z mongodb-service na porcie 27017). Jest to optymalne z punktu widzenia bezpieczeństwa – nie wystawiamy bezpośrednio portów poszczególnych mikrousług (ani bazy danych) na zewnątrz klastra. Dostęp zewnętrzny realizowany jest centralnie za pomocą Ingressa.
+Typ ClusterIP wystawia usługę na wewnętrznym adresie IP klastra, co oznacza, że serwisy te są dostępne tylko z poziomu innych aplikacji wewnątrz klastra (np. car-service i rental-service komunikujące się z mongodb-service na porcie 27017). Jest to optymalne z punktu widzenia bezpieczeństwa - nie wystawiamy bezpośrednio portów poszczególnych mikrousług na zewnątrz klastra. Dostęp zewnętrzny realizowany jest centralnie za pomocą Ingressa.
 
 **4. Dostęp z zewnątrz (Ingress)**
 Do obsługi ruchu z zewnątrz klastra wybrano rozwiązanie Ingress wykorzystujące klasę nginx (ingressClassName: nginx).
 Ruch kierowany jest na host car-rental.local.
-Uzasadnienie i konfiguracja: Wybór Ingressa zamiast wielu usług typu LoadBalancer pozwala na oszczędność zasobów i ujednolicenie punktu wejścia do aplikacji. Ingress realizuje routing oparty na ścieżkach (path-based routing):
+Uzasadnienie i konfiguracja: Wybór Ingressa zamiast wielu usług typu LoadBalancer pozwala na oszczędność zasobów i ujednolicenie punktu wejścia do aplikacji. Ingress realizuje routing oparty na ścieżkach:
 Ruch na ścieżkę /api/cars/?(.*) jest przekierowywany do usługi car-service-service na port 8000.
 Ruch na ścieżkę /api/rentals/?(.*) trafia do rental-service-service na port 8000.
 Pozostały ruch (ścieżka /(.*)) obsługiwany jest przez frontend-service na porcie 80.
 Użyto adnotacji nginx.ingress.kubernetes.io/rewrite-target: /$1, która ułatwia dynamiczne przepisywanie ścieżek URL trafiających do backendowych mikrousług.
 
 **5. Przechowywanie danych (PV / PVC / StorageClass)**
-Mechanizm trwałego przechowywania danych (persistence) został zrealizowany dla bazy danych MongoDB przy użyciu PersistentVolumeClaim (PVC) o nazwie mongodb-pvc.
+Mechanizm trwałego przechowywania danych został zrealizowany dla bazy danych MongoDB przy użyciu PersistentVolumeClaim (PVC) o nazwie mongodb-pvc.
 Zgłoszenie PVC żąda 2Gi przestrzeni dyskowej z domyślnej klasy pamięci standard z prawami dostępu ReadWriteOnce.
 Utworzony wolumen (pod nazwą mongo-storage) jest następnie montowany wewnątrz kontenera MongoDB w ścieżce /data/db. Dzięki temu dane zapisane w bazie przetrwają cykl życia pojedynczego poda.
 
 **6. Wstrzykiwanie konfiguracji (ConfigMap / Secrets)**
 Konfiguracja aplikacji jest odseparowana od obrazów kontenerów, co ułatwia migrację między środowiskami. Wdrożenie wykorzystuje zarówno ConfigMap, jak i Secret.
 ConfigMap (rental-config): Przechowuje jawne parametry konfiguracyjne, takie jak adres połączenia do bazy danych: MONGO_URL: "mongodb://mongodb-service:27017". Wartość ta jest wstrzykiwana jako zmienna środowiskowa MONGO_URL do kontenerów car-service oraz rental-service z użyciem valueFrom.configMapKeyRef.
-Secret (rental-secret): Przechowuje wrażliwe dane, w tym przypadku klucz aplikacji APP_SECRET_KEY, który został zakodowany w formacie Base64 (c3VwZXItc2VjcmV0LWtleQ==). Użycie typu Opaque gwarantuje, że dane wrażliwe nie są przechowywane otwartym tekstem bezpośrednio w repozytorium czy zmiennych bezstanowych.
+Secret (rental-secret): Przechowuje wrażliwe dane, w tym przypadku klucz aplikacji APP_SECRET_KEY, który został zakodowany w formacie Base64. Użycie typu Opaque gwarantuje, że dane wrażliwe nie są przechowywane otwartym tekstem bezpośrednio w repozytorium czy zmiennych bezstanowych.
